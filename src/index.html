@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Camera App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for the video element to ensure it fills the container */
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Ensures the video covers the entire area without distortion */
+            display: block; /* Removes extra space below the video element */
+        }
+
+        /* Hide the video and message box initially */
+        #videoContainer, #messageBox {
+            display: none;
+        }
+
+        /* Style for the message box */
+        #messageBox {
+            background-color: #fef3c7; /* light yellow */
+            color: #d97706; /* dark yellow */
+            border: 1px solid #fde68a; /* slightly darker yellow */
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            text-align: center;
+        }
+
+        /* Style for the message text */
+        #messageText {
+            font-weight: 500;
+        }
+
+        /* Full screen specific styles to ensure video fills the screen */
+        :fullscreen video {
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain; /* Use 'contain' in fullscreen to ensure entire video is visible */
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-100 to-purple-100 min-h-screen flex flex-col items-center justify-center p-4 font-sans text-gray-800">
+
+    <div class="w-full max-w-md bg-white rounded-xl shadow-2xl p-6 flex flex-col items-center space-y-6">
+        <h1 class="text-3xl font-extrabold text-blue-700 mb-4">Camera Access</h1>
+
+        <div id="messageBox" class="w-full">
+            <p id="messageText"></p>
+        </div>
+
+        <button id="startButton" class="w-full py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg transform transition-all duration-200 ease-in-out hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-300">
+            Open Camera
+        </button>
+
+        <div id="videoContainer" class="relative w-full h-64 bg-gray-200 rounded-lg overflow-hidden flex items-center justify-center border-2 border-gray-300">
+            <video id="cameraFeed" autoplay playsinline></video>
+            <span id="videoPlaceholder" class="absolute text-gray-500 text-lg">Camera Feed</span>
+        </div>
+
+        <button id="fullscreenButton" class="w-full py-3 px-6 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow-lg transform transition-all duration-200 ease-in-out hover:scale-105 focus:outline-none focus:ring-4 focus:ring-purple-300" style="display: none;">
+            Enter Fullscreen
+        </button>
+    </div>
+
+    <script>
+        // Get references to DOM elements
+        const startButton = document.getElementById('startButton');
+        const cameraFeed = document.getElementById('cameraFeed');
+        const fullscreenButton = document.getElementById('fullscreenButton');
+        const videoContainer = document.getElementById('videoContainer');
+        const videoPlaceholder = document.getElementById('videoPlaceholder');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+
+        let currentStream; // To store the camera stream for stopping it later
+
+        /**
+         * Displays a message to the user in the message box.
+         * @param {string} message - The message to display.
+         * @param {string} type - 'success', 'error', 'info'. Determines styling.
+         */
+        function showMessage(message, type = 'info') {
+            messageText.textContent = message;
+            messageBox.style.display = 'block';
+            // Reset classes
+            messageBox.className = 'w-full p-4 rounded-lg text-center';
+
+            // Apply type-specific styling using Tailwind classes
+            if (type === 'error') {
+                messageBox.classList.add('bg-red-100', 'text-red-700', 'border', 'border-red-300');
+            } else if (type === 'success') {
+                messageBox.classList.add('bg-green-100', 'text-green-700', 'border', 'border-green-300');
+            } else { // info (default)
+                messageBox.classList.add('bg-blue-100', 'text-blue-700', 'border', 'border-blue-300');
+            }
+        }
+
+        /**
+         * Hides the message box.
+         */
+        function hideMessage() {
+            messageBox.style.display = 'none';
+            messageText.textContent = '';
+        }
+
+        /**
+         * Starts the camera stream and displays it in the video element.
+         */
+        async function startCamera() {
+            hideMessage(); // Clear any previous messages
+            startButton.disabled = true; // Disable button to prevent multiple clicks
+            startButton.textContent = 'Starting Camera...';
+
+            // Stop any existing stream before starting a new one
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+
+            try {
+                // Request access to the user's video camera
+                // 'playsinline' attribute on video is crucial for iOS to play video inline
+                // 'facingMode: environment' prefers the rear camera on mobile, 'user' for front
+                currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                cameraFeed.srcObject = currentStream; // Set the video source to the camera stream
+                videoPlaceholder.style.display = 'none'; // Hide placeholder text
+                videoContainer.style.display = 'block'; // Show the video container
+                fullscreenButton.style.display = 'block'; // Show the fullscreen button
+
+                // Play the video once metadata is loaded
+                cameraFeed.onloadedmetadata = () => {
+                    cameraFeed.play();
+                    showMessage('Camera started successfully!', 'success');
+                    startButton.style.display = 'none'; // Hide start button once camera is active
+                };
+
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                videoContainer.style.display = 'none'; // Hide video container on error
+                fullscreenButton.style.display = 'none'; // Hide fullscreen button on error
+                startButton.style.display = 'block'; // Show start button again
+                startButton.textContent = 'Open Camera'; // Reset button text
+                startButton.disabled = false; // Re-enable button
+
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    showMessage('Camera access denied. Please allow camera permissions in your browser settings.', 'error');
+                } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                    showMessage('No camera found on this device.', 'error');
+                } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                    showMessage('Camera is already in use or could not be accessed.', 'error');
+                } else {
+                    showMessage(`An unexpected error occurred: ${err.message}`, 'error');
+                }
+            }
+        }
+
+        /**
+         * Toggles full screen mode for the video container.
+         */
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                // If not in fullscreen, request fullscreen for the video container
+                if (videoContainer.requestFullscreen) {
+                    videoContainer.requestFullscreen();
+                } else if (videoContainer.webkitRequestFullscreen) { /* Safari */
+                    videoContainer.webkitRequestFullscreen();
+                } else if (videoContainer.msRequestFullscreen) { /* IE11 */
+                    videoContainer.msRequestFullscreen();
+                }
+            } else {
+                // If in fullscreen, exit fullscreen
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) { /* Safari */
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) { /* IE11 */
+                    document.msExitFullscreen();
+                }
+            }
+        }
+
+        // Event Listeners
+        startButton.addEventListener('click', startCamera);
+        fullscreenButton.addEventListener('click', toggleFullscreen);
+
+        // Listen for fullscreen change events to update the button text
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                fullscreenButton.textContent = 'Exit Fullscreen';
+                // Adjust video object-fit when entering fullscreen for better viewing
+                cameraFeed.style.objectFit = 'contain';
+            } else {
+                fullscreenButton.textContent = 'Enter Fullscreen';
+                // Revert video object-fit when exiting fullscreen
+                cameraFeed.style.objectFit = 'cover';
+            }
+        });
+
+        // Initial setup on page load
+        window.onload = () => {
+            showMessage('Click "Open Camera" to start your camera.', 'info');
+        };
+    </script>
+</body>
+</html>
